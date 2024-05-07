@@ -1,0 +1,21 @@
+version: "3.5"
+services:
+  backend:
+    container_name: spring
+    image: spring-cmd:v1
+    restart: always
+    expose:
+      - 8080
+        #ports:
+        #- 8080:8080
+    healthcheck:
+      test: ["CMD-SHELL","curl -f http://host.docker.internal:8080/"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - mynet
+networks:
+  mynet:
+    name: mynet
+    external: true
