@@ -178,11 +178,13 @@ pipeline {
             withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) 
             {
               sh """
+            {
                 git clone https://github.com/sreddy1607/spring-app.git
                 cd spring-app
                 cp ../settings.xml .
                 mvn clean package
                 mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
+            }
               """
             }
           }
