@@ -163,6 +163,7 @@ pipeline {
       }
       steps {
         container('cammismaven') {
+            sh 'mvn clean deploy -DskipTests=true'
           script {
             // Write custom settings.xml file
             writeFile file: 'settings.xml', text: """
