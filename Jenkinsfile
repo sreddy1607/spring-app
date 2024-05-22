@@ -101,11 +101,10 @@ pipeline {
     env_stage_name = ""
     env_step_name = ""
     DOTNET_CLI_TELEMETRY_OPTOUT = '1'
-        NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
-        NEXUS_REPOSITORY = "cammis-java-repo-group"
-        NEXUS_CREDENTIALS_ID = 'nexus-credentials'
-        MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
-  
+    NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
+    NEXUS_REPOSITORY = "cammis-java-repo-group"
+    NEXUS_CREDENTIALS_ID = 'nexus-credentials'
+    MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
   }
 
   stages {
@@ -143,66 +142,81 @@ pipeline {
       }
     }
 
-   stage('Upload Artifact to Nexus') {
-     environment {
-          MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
-        }
+    stage('Prepare Environment') {
       steps {
-          
         container('cammismaven') {
           script {
-             // Write custom settings.xml file
-                    writeFile file: 'settings.xml', text: """
-                    <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                              xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
-                        <servers>
-                            <server>
-                                <id>nexus</id>
-                                <username>${env.NEXUS_USERNAME}</username>
-                                <password>${env.NEXUS_PASSWORD}</password>
-                                <configuration>
-                                    <httpConfiguration>
-                                        <all>
-                                            <params>
-                                                <property>
-                                                    <name>ssl.insecure</name>
-                                                    <value>true</value>
-                                                </property>
-                                                <property>
-                                                    <name>ssl.allowall</name>
-                                                    <value>true</value>
-                                                </property>
-                                            </params>
-                                        </all>
-                                    </httpConfiguration>
-                                </configuration>
-                            </server>
-                        </servers>
-                    </settings>
-                    """
-                    
-           withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) 
-            {
+            echo 'Preparing environment'
+            // Download Nexus certificate and import it to the Java truststore
+            sh """
+              echo | openssl s_client -connect nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov:443 -showcerts > nexus-cert.pem
+              keytool -importcert -file nexus-cert.pem -keystore \$JAVA_HOME/jre/lib/security/cacerts -alias nexus-cert -storepass changeit -noprompt
+            """
+          }
+        }
+      }
+    }
 
+    stage('Build and Deploy to Nexus') {
+      environment {
+        MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
+      }
+      steps {
+        container('cammismaven') {
+          script {
+            // Write custom settings.xml file
+            writeFile file: 'settings.xml', text: """
+              <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                        xsi:schemaLocation="http://maven.apache.org/xsd/settings-1.0.0.xsd">
+                <servers>
+                  <server>
+                    <id>nexus</id>
+                    <username>${env.NEXUS_USERNAME}</username>
+                    <password>${env.NEXUS_PASSWORD}</password>
+                    <configuration>
+                      <httpConfiguration>
+                        <all>
+                          <params>
+                            <property>
+                              <name>ssl.insecure</name>
+                              <value>true</value>
+                            </property>
+                            <property>
+                              <name>ssl.allowall</name>
+                              <value>true</value>
+                            </property>
+                          </params>
+                        </all>
+                      </httpConfiguration>
+                    </configuration>
+                  </server>
+                </servers>
+              </settings>
+            """
+            withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
               sh """
                 git clone https://github.com/sreddy1607/spring-app.git
-           
                 cd spring-app
                 cp ../settings.xml .
                 mvn clean package
-         
-               
-                 
-
-                   mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
-               
+                mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
               """
             }
           }
         }
       }
     }
-    
+  }
+
+  post {
+    success {
+      echo "Build and deployment successful"
+      // Add notification logic here, e.g., Slack notification
+    }
+    failure {
+      echo "Build and deployment failed"
+      // Add failure notification logic here
+    }
   }
 }
