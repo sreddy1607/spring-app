@@ -164,9 +164,7 @@ pipeline {
       steps {
         container('cammismaven') {
           script {
-            withCredentials([usernamePassword(credentialsId: 'nexus-credentials', passwordVariable: 'NEXUS_PASSWORD', usernameVariable: 'NEXUS_USERNAME')]) {
-              def nexusUrl = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository/cammis-java-repo-group"
-              def artifactFile = "spring-boot-web.jar"
+          
 
               sh '''
                 git clone https://github.com/sreddy1607/spring-app.git
@@ -175,11 +173,9 @@ pipeline {
                 mvn clean package
               '''
                
-                    def nexusUsername = credentials("${NEXUS_CREDENTIALS_ID}").username
-                    def nexusPassword = credentials("${NEXUS_CREDENTIALS_ID}").password
+                  withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
 
-                  
-                   sh 'mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=>spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -DrepositoryId=nexus -DrepositoryCredentialsId=${NEXUS_CREDENTIALS_ID}'
+                   sh "mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=>spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -DrepositoryId=nexus -DrepositoryCredentialsId=${NEXUS_CREDENTIALS_ID}"
                
               
             }
