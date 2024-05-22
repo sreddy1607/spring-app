@@ -101,6 +101,10 @@ pipeline {
     env_stage_name = ""
     env_step_name = ""
     DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+        NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository"
+        NEXUS_REPOSITORY = "cammis-java-repo-group"
+        NEXUS_CREDENTIALS_ID = 'nexus-credentials-id'
+  
   }
 
   stages {
@@ -171,7 +175,13 @@ pipeline {
                 cd spring-app
                 mvn clean package
                 cd target
-                curl -kv -u Eshwar:Redd1234 -F "file=@spring-boot-web.jar" "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository/cammis-java-repo-group/spring-boot-web.jar"
+                // Nexus credentials
+                    def nexusUsername = credentials("${NEXUS_CREDENTIALS_ID}").username
+                    def nexusPassword = credentials("${NEXUS_CREDENTIALS_ID}").password
+
+                    // Deploy artifact to Nexus
+                    sh "mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=>spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -DrepositoryId=nexus -DrepositoryCredentialsId=${NEXUS_CREDENTIALS_ID}"
+                #curl -kv -u Eshwar:Redd1234 -F "file=@spring-boot-web.jar" "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository/cammis-java-repo-group/spring-boot-web.jar"
               '''
             }
           }
