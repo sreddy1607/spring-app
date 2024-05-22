@@ -150,7 +150,7 @@ pipeline {
             // Download Nexus certificate and import it to the Java truststore
             sh """
               echo | openssl s_client -connect nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov:443 -showcerts > nexus-cert.pem
-              keytool -importcert -file nexus-cert.pem -keystore /path/to/java/security/cacerts -alias nexus-cert -storepass changeit -noprompt
+              keytool -importcert -file nexus-cert.pem -keystore /usr/lib/jvm/java-17-openjdk/lib/security/cacerts -alias nexus-cert -storepass changeit -noprompt
             """
           }
         }
