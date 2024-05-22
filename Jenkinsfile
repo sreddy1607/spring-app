@@ -145,6 +145,10 @@ pipeline {
 
    stage('Upload Artifact to Nexus') {
       steps {
+        environment {
+          MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
+        }
+          
         container('cammismaven') {
           script {
            withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) 
