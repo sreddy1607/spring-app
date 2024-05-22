@@ -168,6 +168,7 @@ pipeline {
                
                 git clone https://github.com/sreddy1607/spring-app.git
                 ls -l
+                cd spring-app
                 mvn clean package
                 cd target
                 curl -kv -u Eshwar:Redd1234 -F "file=@spring-boot-web.jar" "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository/cammis-java-repo-group/spring-boot-web.jar"
