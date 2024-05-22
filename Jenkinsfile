@@ -180,7 +180,7 @@ pipeline {
 
                   
                    sh 'mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=>spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -DrepositoryId=nexus -DrepositoryCredentialsId=${NEXUS_CREDENTIALS_ID}'
-                #curl -kv -u Eshwar:Redd1234 -F "file=@spring-boot-web.jar" "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository/cammis-java-repo-group/spring-boot-web.jar"
+               
               
             }
           }
