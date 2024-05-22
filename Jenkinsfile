@@ -189,6 +189,7 @@ pipeline {
                 git clone https://github.com/sreddy1607/spring-app.git
            
                 cd spring-app
+                cp ../settings.xml .
                 mvn clean package
          
                
