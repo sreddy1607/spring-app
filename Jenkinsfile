@@ -163,6 +163,7 @@ pipeline {
       }
       steps {
         container('cammismaven') {
+          dir('spring-app')
             sh 'mvn clean deploy -DskipTests=true'
           script {
             // Write custom settings.xml file
