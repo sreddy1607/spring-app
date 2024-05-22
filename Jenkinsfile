@@ -146,7 +146,8 @@ pipeline {
       steps {
         container('cammismaven') {
           script {
-          
+           withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) 
+            {
 
               sh """
                 git clone https://github.com/sreddy1607/spring-app.git
@@ -155,7 +156,7 @@ pipeline {
                 mvn clean package
          
                
-                  withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
+                 
 
                    mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=spring-app/target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true
                
@@ -165,4 +166,6 @@ pipeline {
         }
       }
     }
+    
   }
+}
