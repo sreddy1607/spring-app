@@ -145,9 +145,7 @@ pipeline {
             withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'jenkins-ecr', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
               sh '''
                 mvn --version
-                git clone https://github.com/sreddy1607/Dotnet_App.git
-                ls -l
-                
+                                         
                 java --version
              
                 
@@ -169,6 +167,7 @@ pipeline {
               sh '''
                
                 git clone https://github.com/sreddy1607/spring-app.git
+                ls -l
                 mvn clean package
                 cd target
                 curl -kv -u Eshwar:Redd1234 -F "file=@spring-boot-web.jar" "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository/cammis-java-repo-group/spring-boot-web.jar"
