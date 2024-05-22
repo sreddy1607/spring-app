@@ -103,7 +103,7 @@ pipeline {
     DOTNET_CLI_TELEMETRY_OPTOUT = '1'
         NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov/repository"
         NEXUS_REPOSITORY = "cammis-java-repo-group"
-        NEXUS_CREDENTIALS_ID = 'nexus-credentials-id'
+        NEXUS_CREDENTIALS_ID = 'nexus-credentials'
   
   }
 
