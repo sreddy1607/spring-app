@@ -194,7 +194,7 @@ pipeline {
                 </servers>
               </settings>
             """
-            withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
+            withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
               sh """
                 git clone https://github.com/sreddy1607/spring-app.git
                 cd spring-app
