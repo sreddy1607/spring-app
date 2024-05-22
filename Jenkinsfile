@@ -149,8 +149,12 @@ pipeline {
             echo 'Preparing environment'
             // Download Nexus certificate and import it to the Java truststore
             sh """
-              echo | openssl s_client -connect nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov:443 -showcerts > nexus-cert.pem
-              keytool -importcert -file nexus-cert.pem -keystore \$JAVA_HOME/jre/lib/security/cacerts -alias nexus-cert -storepass changeit -noprompt
+              #echo | openssl s_client -connect nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov:443 -showcerts > nexus-cert.pem
+              #keytool -importcert -file nexus-cert.pem -keystore \$JAVA_HOME/jre/lib/security/cacerts -alias nexus-cert -storepass changeit -noprompt
+               echo | openssl s_client -connect nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov:443 -showcerts > nexus-cert.pem
+               keytool -importcert -file nexus-cert.pem -keystore /path/to/java/jre/lib/security/cacerts -alias nexus-cert -storepass changeit -noprompt
+"""
+
             """
           }
         }
