@@ -142,25 +142,7 @@ pipeline {
       }
     }
 
-    stage('Test Maven Image') {
-      steps {
-        container(name: "cammismaven") {
-          script {
-            withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'jenkins-ecr', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-              sh '''
-                mvn --version
-                                         
-                java --version
-             
-                
-              '''
-            }
-          }
-        }
-      }
-    }
-
-    stage('Upload Artifact to Nexus') {
+   stage('Upload Artifact to Nexus') {
       steps {
         container('cammismaven') {
           script {
@@ -184,5 +166,3 @@ pipeline {
       }
     }
   }
-}
-}
