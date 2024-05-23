@@ -189,8 +189,10 @@ pipeline {
                 mvn clean package -f spring-app/pom.xml
                 export MAVEN_OPTS="-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true -Dhttps.protocols=TLSv1.2"
                 #curl -k -v -u Eshwar:7eb5424c-5f47-381c-b1fa-8c8592508455 --upload-file target/spring-boot-web.jar ${NEXUS_URL}/repositories/${NEXUS_REPOSITORY}/spring-boot-web.jar
+                cd spring-app
+                #mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY} -DpomFile=spring-app/pom.xml -Dfile=spring-app/target/spring-boot-web.jar
 
-                mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY} -DpomFile=spring-app/pom.xml -Dfile=spring-app/target/spring-boot-web.jar
+                mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY} -DpomFile=pom.xml -Dfile=target/spring-boot-web.jar
 
                   # mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
                #curl -k -v -u Eshwar:Redd1234 \
