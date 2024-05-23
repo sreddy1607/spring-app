@@ -187,7 +187,9 @@ pipeline {
                 cd spring-app
                 ls -la
                 mvn clean package
-                mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY} -DpomFile=pom.xml -Dfile=target/spring-boot-web.jar
+                curl -v -u Eshwar:Reddy123 --upload-file target/spring-boot-web.jar ${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY}/spring-boot-web.jar
+
+                #mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY} -DpomFile=pom.xml -Dfile=target/spring-boot-web.jar
 
                   # mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
                
