@@ -102,6 +102,7 @@ pipeline {
     env_step_name = ""
     DOTNET_CLI_TELEMETRY_OPTOUT = '1'
         NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
+        NEXUS_URL = "http://nexusrepo-sonatype-nexus-service.tools.svc.cluster.local:8081"
         NEXUS_REPOSITORY = "cammis-java-repo-group"
         NEXUS_CREDENTIALS_ID = 'nexus-credentials'
         MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
