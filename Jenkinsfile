@@ -184,7 +184,7 @@ pipeline {
               sh """
               ls -la
                 git clone https://github.com/sreddy1607/spring-app.git
-                #cp settings.xml spring-app/
+                cp settings.xml spring-app/
                 #cd spring-app
                 ls -la
                 mvn clean package -f spring-app/pom.xml
