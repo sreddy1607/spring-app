@@ -158,8 +158,8 @@ pipeline {
   <servers>
     <server>
       <id>nexus</id>
-      <username>your-username</username>
-      <password>your-password</password>
+      <username>Eshwar</username>
+      <password>Redd1234</password>
     </server>
   </servers>
   <profiles>
