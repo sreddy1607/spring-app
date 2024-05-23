@@ -186,14 +186,12 @@ pipeline {
             {
 
               sh """
+              ls -la
                 git clone https://github.com/sreddy1607/spring-app.git
                 cp settings.xml spring-app/
                 cd spring-app
+                ls -la
                 mvn clean package
-         
-               
-                 
-
                    mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
                
               """
