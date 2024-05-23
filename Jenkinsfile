@@ -163,9 +163,7 @@ pipeline {
       }
       steps {
         container('cammismaven') {
-          dir('spring-app') {
-            sh 'mvn clean deploy -DskipTests=true'
-            script {
+              script {
               // Write custom settings.xml file
               writeFile file: 'settings.xml', text: """
                 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
@@ -199,12 +197,24 @@ pipeline {
               withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
                 sh """
                   git clone https://github.com/sreddy1607/spring-app.git
+                  cp settings.xml spring-app
                   cd spring-app
-                  }
-                }
+                  
+                   mvn deploy:deploy-file \\
+                            -DgroupId=com.example \\
+                            -DartifactId=spring-app \\
+                            -Dversion=1.0.0 \\
+                            -Dpackaging=jar \\
+                            -Dfile=target/spring-app-1.0.0.jar \\
+                            -DrepositoryId=nexus \\
+                            -Durl=$NEXUS_REPO_URL \\
+                            -DrepositoryId=nexus \\
+                            -Durl=$NEXUS_REPO_URL \\
+                            -Dusername=$NEXUS_USERNAME \\
+                            -Dpassword=$NEXUS_PASSWORD
+            }
+        }
              }
            }
           }     
-                 
-
-
+              
