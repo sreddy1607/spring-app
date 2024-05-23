@@ -153,33 +153,28 @@ pipeline {
           script {
              // Write custom settings.xml file
                     writeFile file: 'settings.xml', text: """
-                    <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-                              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                              xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
-                        <servers>
-                            <server>
-                                <id>nexus</id>
-                                <username>${env.NEXUS_USERNAME}</username>
-                                <password>${env.NEXUS_PASSWORD}</password>
-                                <configuration>
-                                    <httpConfiguration>
-                                        <all>
-                                            <params>
-                                                <property>
-                                                    <name>ssl.insecure</name>
-                                                    <value>true</value>
-                                                </property>
-                                                <property>
-                                                    <name>ssl.allowall</name>
-                                                    <value>true</value>
-                                                </property>
-                                            </params>
-                                        </all>
-                                    </httpConfiguration>
-                                </configuration>
-                            </server>
-                        </servers>
-                    </settings>
+                    <settings>
+  <servers>
+    <server>
+      <id>nexus</id>
+      <username>your-username</username>
+      <password>your-password</password>
+    </server>
+  </servers>
+  <profiles>
+    <profile>
+      <id>nexus</id>
+      <properties>
+        <maven.wagon.http.ssl.insecure>true</maven.wagon.http.ssl.insecure>
+        <maven.wagon.http.ssl.allowall>true</maven.wagon.http.ssl.allowall>
+      </properties>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>nexus</activeProfile>
+  </activeProfiles>
+</settings>
+
                     """
                     
            withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) 
