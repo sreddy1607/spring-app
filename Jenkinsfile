@@ -41,16 +41,16 @@ pipeline {
               command: ["/bin/bash"]
               securityContext:
                 privileged: true
-              workingDir: \${workingDir}
+              workingDir: ${workingDir}
               envFrom:
                 - configMapRef:
                     name: jenkins-agent-env
                     optional: true
               env:
                 - name: HOME
-                  value: \${workingDir}
+                  value: ${workingDir}
                 - name: BRANCH
-                  value: \${branch}
+                  value: ${branch}
                 - name: GIT_SSL_CAINFO
                   value: "/etc/pki/tls/certs/ca-bundle.crt"
               volumeMounts:
@@ -62,16 +62,16 @@ pipeline {
               command: ["/bin/bash"]
               securityContext:
                 privileged: true
-              workingDir: \${workingDir}
+              workingDir: ${workingDir}
               envFrom:
                 - configMapRef:
                     name: jenkins-agent-env
                     optional: true
               env:
                 - name: HOME
-                  value: \${workingDir}
+                  value: ${workingDir}
                 - name: BRANCH
-                  value: \${branch}
+                  value: ${branch}
                 - name: NEXUS_ACCESS_TOKEN
                   valueFrom:
                     secretKeyRef:
@@ -121,22 +121,21 @@ pipeline {
 
             deleteDir()
             echo 'Checkout source and get the commit ID'
-            // env_current_git_commit = checkout(scm).GIT_COMMIT
+            env_current_git_commit = checkout(scm).GIT_COMMIT
 
             echo 'Loading properties file'
             env_step_name = "load properties"
-            // load the pipeline properties
-            // load(".jenkins/pipelines/Jenkinsfile.ecr.properties")
+            load(".jenkins/pipelines/Jenkinsfile.ecr.properties")
 
             env_step_name = "set global variables"
             echo 'Initialize Slack channels and tokens'
-            // initSlackChannels()
+            initSlackChannels()
 
-            // env_git_branch_name = BRANCH_NAME
-            // env_current_git_commit = "${env_current_git_commit[0..7]}"
-            // echo "The commit hash from the latest git current commit is ${env_current_git_commit}"
-            // currentBuild.displayName = "#${BUILD_NUMBER}"
-            // slackNotification("pipeline","${APP_NAME}-${env_git_branch_name}: <${BUILD_URL}console|build #${BUILD_NUMBER}> started.","#439FE0","false")
+            env_git_branch_name = BRANCH_NAME
+            env_current_git_commit = "${env_current_git_commit[0..7]}"
+            echo "The commit hash from the latest git current commit is ${env_current_git_commit}"
+            currentBuild.displayName = "#${BUILD_NUMBER}"
+            slackNotification("pipeline","${APP_NAME}-${env_git_branch_name}: <${BUILD_URL}console|build #${BUILD_NUMBER}> started.","#439FE0","false")
           }
         }
       }
@@ -149,7 +148,7 @@ pipeline {
             echo 'Preparing environment'
             // Download Nexus certificate and import it to the Java truststore
             sh """
-              echo | openssl s_client -connect nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov:443 -showcerts > nexus-cert.pem
+              echo | openssl s_client -connect ${env.NEXUS_URL}:443 -showcerts > nexus-cert.pem
               keytool -importcert -file nexus-cert.pem -keystore /usr/lib/jvm/java-17-openjdk/lib/security/cacerts -alias nexus-cert -storepass changeit -noprompt
             """
           }
@@ -158,12 +157,10 @@ pipeline {
     }
 
     stage('Build and Deploy to Nexus') {
-      environment {
-        MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
-      }
       steps {
         container('cammismaven') {
-              script {
+          withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
+            script {
               // Write custom settings.xml file
               writeFile file: 'settings.xml', text: """
                 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
@@ -194,29 +191,23 @@ pipeline {
                   </servers>
                 </settings>
               """
-              withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) {
-                sh """
-                  git clone https://github.com/sreddy1607/spring-app.git
-                  cp settings.xml spring-app
-                  cd spring-app
-                  
-                   mvn deploy:deploy-file \\
-                            -DgroupId=com.example \\
-                            -DartifactId=spring-app \\
-                            -Dversion=1.0.0 \\
-                            -Dpackaging=jar \\
-                            -Dfile=target/spring-app-1.0.0.jar \\
-                            -DrepositoryId=nexus \\
-                            -Durl=$NEXUS_REPO_URL \\
-                            -DrepositoryId=nexus \\
-                            -Durl=$NEXUS_REPO_URL \\
-                            -Dusername=$NEXUS_USERNAME \\
-                            -Dpassword=$NEXUS_PASSWORD
+              sh """
+                git clone https://github.com/sreddy1607/spring-app.git
+                cp settings.xml spring-app
+                cd spring-app
+                mvn deploy:deploy-file \\
+                  -DgroupId=com.example \\
+                  -DartifactId=spring-app \\
+                  -Dversion=1.0.0 \\
+                  -Dpackaging=jar \\
+                  -Dfile=target/spring-app-1.0.0.jar \\
+                  -DrepositoryId=nexus \\
+                  -Durl=${env.NEXUS_URL}/repository/${env.NEXUS_REPOSITORY}/
+              """
             }
-         }
-             }
-           }
           }
         }
-        }
-        }
+      }
+    }
+  }
+}
