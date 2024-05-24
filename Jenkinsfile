@@ -114,6 +114,7 @@ pipeline {
     stage("Initialize") {
       steps {
         container(name: "node") {
+          
           script {
             properties([
               parameters([])
@@ -152,9 +153,9 @@ pipeline {
       steps {
           
         container('cammismaven') {
-         
+            checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/sreddy1607/spring-app.git']])
                     script {
-                      git 'https://github.com/sreddy1607/spring-app.git'
+                      //git 'https://github.com/sreddy1607/spring-app.git'
                       sh """ 
                       #git clone https://github.com/sreddy1607/spring-app.git
                       #cd spring-app
