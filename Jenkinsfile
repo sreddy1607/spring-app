@@ -101,10 +101,11 @@ pipeline {
     env_stage_name = ""
     env_step_name = ""
     DOTNET_CLI_TELEMETRY_OPTOUT = '1'
-      
-        NEXUS_URL = "http://nexusrepo-sonatype-nexus-service.tools.svc.cluster.local:8081"
+      NEXUS_VERSION = "nexus3"
+    NEXUS_PROTOCOL = "http"
+        NEXUS_URL = "nexusrepo-sonatype-nexus-service.tools.svc.cluster.local:8081"
         NEXUS_REPOSITORY = "cammis-java-repo-group"
-        NEXUS_CREDENTIALS_ID = 'nexus-credentials'
+        NEXUS_CREDENTIAL_ID = 'nexus-credentials'
         MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
   
   }
@@ -153,8 +154,9 @@ pipeline {
         container('cammismaven') {
          
                     script {
-                      git 'https://github.com/sreddy1607/spring-app.git'
+                      sh 'git clone https://github.com/sreddy1607/spring-app.git'
                       sh 'cd spring-app'
+                      sh 'mvn clean package'
                     // Read POM xml file using 'readMavenPom' step , this step 'readMavenPom' is included in: https://plugins.jenkins.io/pipeline-utility-steps
                     pom = readMavenPom file: "pom.xml";
                     // Find built artifact under target folder
