@@ -160,7 +160,7 @@ pipeline {
                       mvn clean package
                       """
                     // Read POM xml file using 'readMavenPom' step , this step 'readMavenPom' is included in: https://plugins.jenkins.io/pipeline-utility-steps
-                    pom = readMavenPom file: "/spring-app/pom.xml";
+                    pom = readMavenPom file: "spring-app/pom.xml";
                     // Find built artifact under target folder
                     filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
                     // Print some info from the artifact found
