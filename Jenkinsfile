@@ -157,8 +157,8 @@ pipeline {
                     <settings>
   <server>
   <id>nexus</id>
-  <username>your_username</username>
-  <password>your_password</password>
+  <username>Eshwar</username>
+  <password>Redd1234</password>
   <configuration>
     <httpsProtocols>
       <!-- Disables SSL/TLS protocol versions -->
