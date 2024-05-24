@@ -151,64 +151,52 @@ pipeline {
       steps {
           
         container('cammismaven') {
-          script {
-             // Write custom settings.xml file
-                    writeFile file: 'settings.xml', text: """
-                    <settings>
-  <servers>
-    <server>
-      <id>nexus</id>
-      <username>Eshwar</username>
-      <password>Redd1234</password>
-    </server>
-  </servers>
-  <profiles>
-    <profile>
-      <id>nexus</id>
-      <properties>
-        <maven.wagon.http.ssl.insecure>true</maven.wagon.http.ssl.insecure>
-        <maven.wagon.http.ssl.allowall>true</maven.wagon.http.ssl.allowall>
-      </properties>
-    </profile>
-  </profiles>
-  <activeProfiles>
-    <activeProfile>nexus</activeProfile>
-  </activeProfiles>
-</settings>
+         
+                    script {
+                    // Read POM xml file using 'readMavenPom' step , this step 'readMavenPom' is included in: https://plugins.jenkins.io/pipeline-utility-steps
+                    pom = readMavenPom file: "pom.xml";
+                    // Find built artifact under target folder
+                    filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
+                    // Print some info from the artifact found
+                    echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} ${filesByGlob[0].length} ${filesByGlob[0].lastModified}"
+                    // Extract the path from the File found
+                    artifactPath = filesByGlob[0].path;
+                    // Assign to a boolean response verifying If the artifact name exists
+                    artifactExists = fileExists artifactPath;
 
-                    """
-                    
-           withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) 
-            {
+                    if(artifactExists) {
+                        echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version ${pom.version}";
 
-              sh """
-              ls -la
-                git clone https://github.com/sreddy1607/spring-app.git
-                cp settings.xml spring-app/
-                #cd spring-app
-                ls -la
-                mvn clean package -f spring-app/pom.xml
-                export MAVEN_OPTS="-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true -Dhttps.protocols=TLSv1.2"
-                #curl -k -v -u Eshwar:7eb5424c-5f47-381c-b1fa-8c8592508455 --upload-file target/spring-boot-web.jar ${NEXUS_URL}/repositories/${NEXUS_REPOSITORY}/spring-boot-web.jar
-                cd spring-app
-                mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
-                #mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/repositories/${NEXUS_REPOSITORY} -DpomFile=pom.xml -Dfile=target/spring-boot-web.jar
+                        nexusArtifactUploader(
+                            nexusVersion: NEXUS_VERSION,
+                            protocol: NEXUS_PROTOCOL,
+                            nexusUrl: NEXUS_URL,
+                            groupId: pom.groupId,
+                            version: pom.version,
+                            repository: NEXUS_REPOSITORY,
+                            credentialsId: NEXUS_CREDENTIAL_ID,
+                            artifacts: [
+                                // Artifact generated such as .jar, .ear and .war files.
+                                [artifactId: pom.artifactId,
+                                classifier: '',
+                                file: artifactPath,
+                                type: pom.packaging],
 
-                #mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY} -DpomFile=pom.xml -Dfile=target/spring-boot-web.jar
+                                // Lets upload the pom.xml file for additional information for Transitive dependencies
+                                [artifactId: pom.artifactId,
+                                classifier: '',
+                                file: "pom.xml",
+                                type: "pom"]
+                            ]
+                        );
 
-                #mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
-               #curl -k -v -u Eshwar:Redd1234 \
-#-F "maven2.generate-pom=false" \
-#-F "maven2.asset1=@target/spring-boot-web.jar" \
-#-F "maven2.asset1.extension=jar" \
-#${NEXUS_URL}/service/rest/v1/components?repository=${NEXUS_REPOSITORY}
-
-              """
+                    } else {
+                        error "*** File: ${artifactPath}, could not be found";
+                    }
+                }
             }
-          }
         }
-      }
+
     }
-    
-  }
+          
 }
