@@ -154,7 +154,7 @@ pipeline {
         container('cammismaven') {
          
                     script {
-                      git 'https://github.com/danielalejandrohc/cargotracker.git'
+                      git 'https://github.com/sreddy1607/spring-app.git'
                       sh """ 
                       #git clone https://github.com/sreddy1607/spring-app.git
                       #cd spring-app
