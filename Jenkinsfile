@@ -106,6 +106,7 @@ pipeline {
         NEXUS_REPOSITORY = "cammis-maven-repo-hosted"
         NEXUS_CREDENTIALS = credentials('nexus-credentials')
         MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
+       
   
   }
 
@@ -176,7 +177,7 @@ pipeline {
     sh '''
     JARFILE=`ls target/ |grep jar |head -1`
           
-    curl -kv -u ${NEXUS_CREDENTIALS_USR}:${NEXUS_CREDENTIALS_PSW} -F "maven2.generate-pom=false" -F "maven2.asset1=@pom.xml" -F "maven2.asset1.extension=pom" -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" -F "maven2.asset2.extension=jar" ${NEXUS_URL}
+    curl -kv -u ${NEXUS_CREDENTIALS_USR}:${NEXUS_CREDENTIALS_PSW} -F "maven2.generate-pom=false" -F "maven2.asset1=@pom.xml" -F "maven2.asset1.extension=pom" -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" -F "maven2.asset2.extension=jar" ${NEXUS_URL}/service/rest/v1/components?repository=${NEXUS_REPOSITORY}
     '''
 
             }
