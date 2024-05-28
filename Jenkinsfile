@@ -123,7 +123,7 @@ pipeline {
 
             deleteDir()
             echo 'Checkout source and get the commit ID'
-            // env_current_git_commit = checkout(scm).GIT_COMMIT
+            env_current_git_commit = checkout(scm).GIT_COMMIT
 
             echo 'Loading properties file'
             env_step_name = "load properties"
