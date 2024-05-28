@@ -145,9 +145,6 @@ pipeline {
     }
 
    stage('Upload Artifact to Nexus') {
-     environment {
-          MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
-        }
       steps {
           
         container('cammismaven') {
@@ -171,6 +168,7 @@ pipeline {
 </server>
 </settings>
  """
+          }
   sh """
     ls -l
     mvn clean package
