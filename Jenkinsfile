@@ -173,7 +173,7 @@ pipeline {
     ls -l
     mvn clean package
     """
-    sh """JARFILE=`ls target/ |grep -i 'jar\|war\|ear'|grep -v original|head -1`"""
+    sh  'JARFILE=`ls target/ |grep -i 'jar\|war\|ear'|grep -v original|head -1`'
           
     sh 'curl -kv -u admin:admin -F "maven2.generate-pom=false" -F "maven2.asset1=@pom.xml" -F "maven2.asset1.extension=pom" -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" -F "maven2.asset2.extension=jar" ${NEXUS_URL}'
 
