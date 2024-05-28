@@ -104,7 +104,7 @@ pipeline {
       
         NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
         NEXUS_REPOSITORY = "cammis-maven-repo-hosted"
-        NEXUS_CREDENTIALS = 'nexus-credentials'
+        NEXUS_CREDENTIALS = credentials('nexus-credentials')
         MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
   
   }
