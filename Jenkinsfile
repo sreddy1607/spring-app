@@ -100,11 +100,11 @@ pipeline {
     env_skip_build = "false"
     env_stage_name = ""
     env_step_name = ""
-    DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+    
       
         NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
-        NEXUS_REPOSITORY = "cammis-java-repo-group"
-        NEXUS_CREDENTIALS_ID = 'nexus-credentials'
+        NEXUS_REPOSITORY = "cammis-maven-repo-hosted"
+        NEXUS_CREDENTIALS = 'nexus-credentials'
         MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
   
   }
@@ -112,7 +112,7 @@ pipeline {
   stages {
     stage("Initialize") {
       steps {
-        container(name: "node") {
+        container(name: "cammismaven") {
           script {
             properties([
               parameters([])
@@ -157,8 +157,8 @@ pipeline {
                     <settings>
   <server>
   <id>nexus</id>
-  <username>Eshwar</username>
-  <password>Redd1234</password>
+  <username>${NEXUS_CREDENTIALS_USR}</username>
+  <password>${NEXUS_CREDENTIALS_PSW}</password>
   <configuration>
     <httpsProtocols>
       <!-- Disables SSL/TLS protocol versions -->
@@ -170,35 +170,13 @@ pipeline {
   </configuration>
 </server>
 </settings>
-
-                    """
-                    
-           withCredentials([usernamePassword(credentialsId: "${NEXUS_CREDENTIALS_ID}", usernameVariable: 'NEXUS_USERNAME', passwordVariable: 'NEXUS_PASSWORD')]) 
-            {
-
-              sh """
-              ls -la
-                git clone https://github.com/sreddy1607/spring-app.git
-                cp settings.xml spring-app/
-                #cd spring-app
-                ls -la
-                mvn clean package -f spring-app/pom.xml
-                export MAVEN_OPTS="-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true -Dmaven.wagon.http.ssl.ignore.validity.dates=true -Dhttps.protocols=TLSv1.2"
-                #curl -k -v -u Eshwar:7eb5424c-5f47-381c-b1fa-8c8592508455 --upload-file target/spring-boot-web.jar ${NEXUS_URL}/repositories/${NEXUS_REPOSITORY}/spring-boot-web.jar
-                cd spring-app
-                mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
-                #mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/repositories/${NEXUS_REPOSITORY} -DpomFile=pom.xml -Dfile=target/spring-boot-web.jar
-
-                #mvn deploy:deploy-file -DgeneratePom=false -DrepositoryId=nexus -Durl=${NEXUS_URL}/nexus/content/repositories/${NEXUS_REPOSITORY} -DpomFile=pom.xml -Dfile=target/spring-boot-web.jar
-
-                #mvn deploy:deploy-file -Durl=${NEXUS_URL}/repository/${NEXUS_REPOSITORY} -DrepositoryId=nexus -Dfile=target/spring-boot-web.jar -DgroupId=com.test -DartifactId=spring-boot-demo -Dversion=1.0 -Dpackaging=jar -DgeneratePom=true -s settings.xml
-               #curl -k -v -u Eshwar:Redd1234 \
-#-F "maven2.generate-pom=false" \
-#-F "maven2.asset1=@target/spring-boot-web.jar" \
-#-F "maven2.asset1.extension=jar" \
-#${NEXUS_URL}/service/rest/v1/components?repository=${NEXUS_REPOSITORY}
-
-              """
+ """
+  sh """
+    ls -l
+    mvn clean package
+    JARFILE=`ls target/ |grep jar |head -1`
+    curl -v -u admin:admin -F "maven2.generate-pom=false" -F "maven2.asset1=@pom.xml" -F "maven2.asset1.extension=pom" -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" -F "maven2.asset2.extension=jar" ${NEXUS_URL}
+  """
             }
           }
         }
@@ -206,4 +184,4 @@ pipeline {
     }
     
   }
-}
+
