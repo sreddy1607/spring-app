@@ -172,9 +172,11 @@ pipeline {
   sh """
     ls -l
     mvn clean package
-    JARFILE=`ls target/ |grep jar |head -1`
-    curl -v -u admin:admin -F "maven2.generate-pom=false" -F "maven2.asset1=@pom.xml" -F "maven2.asset1.extension=pom" -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" -F "maven2.asset2.extension=jar" ${NEXUS_URL}
-  """
+    """
+    #JARFILE=`ls target/ |grep 'jar|war|ear' |head -1`
+    sh 'JARFILE=grep -R '--include=*.'{jar,war,ear} pattern target/|head -1'
+    sh 'curl -v -u admin:admin -F "maven2.generate-pom=false" -F "maven2.asset1=@pom.xml" -F "maven2.asset1.extension=pom" -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" -F "maven2.asset2.extension=jar" ${NEXUS_URL}'
+
             }
           }
         }
