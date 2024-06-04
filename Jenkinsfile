@@ -100,20 +100,21 @@ pipeline {
     env_skip_build = "false"
     env_stage_name = ""
     env_step_name = ""
-    
+    DOTNET_CLI_TELEMETRY_OPTOUT = '1'
       
-        NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
-        NEXUS_REPOSITORY = "cammis-maven-repo-hosted"
-        NEXUS_CREDENTIALS = credentials('nexus-credentials')
+        NEXUS_URL = "nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
+        NEXUS_REPOSITORY = "cammis-java-repo-group"
+        NEXUS_CREDENTIALS_ID = 'nexus-credentials'
+		NEXUS_PROTOCOL = "https"
+		NEXUS_VERSION = "3"
         MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
-       
   
   }
 
   stages {
     stage("Initialize") {
       steps {
-        container(name: "cammismaven") {
+        container(name: "node") {
           script {
             properties([
               parameters([])
@@ -146,43 +147,59 @@ pipeline {
     }
 
    stage('Upload Artifact to Nexus') {
+     environment {
+          MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
+        }
       steps {
           
         container('cammismaven') {
-          script {
-             // Write custom settings.xml file
-                    writeFile file: 'settings.xml', text: """
-                    <settings>
-  <server>
-  <id>nexus</id>
-  <username>${NEXUS_CREDENTIALS_USR}</username>
-  <password>${NEXUS_CREDENTIALS_PSW}</password>
-  <configuration>
-    <httpsProtocols>
-      <!-- Disables SSL/TLS protocol versions -->
-      <httpsProtocol>TLSv1.2</httpsProtocol>
-    </httpsProtocols>
-    <ssl>
-      <trustAll>true</trustAll>
-    </ssl>
-  </configuration>
-</server>
-</settings>
- """
-          }
-  sh """
-    ls -l
-    mvn clean package
-    """
-    sh '''
-    JARFILE=`ls target/ |grep jar |head -1`
-          
-    curl -kv -u ${NEXUS_CREDENTIALS_USR}:${NEXUS_CREDENTIALS_PSW} -F "maven2.generate-pom=false" -F "maven2.asset1=@pom.xml" -F "maven2.asset1.extension=pom" -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" -F "maven2.asset2.extension=jar" ${NEXUS_URL}/service/rest/v1/components?repository=${NEXUS_REPOSITORY}
-    '''
+         
+                    script {
+                    // Read POM xml file using 'readMavenPom' step , this step 'readMavenPom' is included in: https://plugins.jenkins.io/pipeline-utility-steps
+                    pom = readMavenPom file: "pom.xml";
+                    // Find built artifact under target folder
+                    filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
+                    // Print some info from the artifact found
+                    echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} ${filesByGlob[0].length} ${filesByGlob[0].lastModified}"
+                    // Extract the path from the File found
+                    artifactPath = filesByGlob[0].path;
+                    // Assign to a boolean response verifying If the artifact name exists
+                    artifactExists = fileExists artifactPath;
 
+                    if(artifactExists) {
+                        echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version ${pom.version}";
+
+                        nexusArtifactUploader(
+                            nexusVersion: NEXUS_VERSION,
+                            protocol: NEXUS_PROTOCOL,
+                            nexusUrl: NEXUS_URL,
+                            groupId: pom.groupId,
+                            version: pom.version,
+                            repository: NEXUS_REPOSITORY,
+                            credentialsId: NEXUS_CREDENTIALS_ID,
+                            artifacts: [
+                                // Artifact generated such as .jar, .ear and .war files.
+                                [artifactId: pom.artifactId,
+                                classifier: '',
+                                file: artifactPath,
+                                type: pom.packaging],
+
+                                // Lets upload the pom.xml file for additional information for Transitive dependencies
+                                [artifactId: pom.artifactId,
+                                classifier: '',
+                                file: "pom.xml",
+                                type: "pom"]
+                            ]
+                        );
+
+                    } else {
+                        error "*** File: ${artifactPath}, could not be found";
+                    }
+                }
             }
-          }
         }
-      }
-    }
 
+    }
+           
+  }
+}
