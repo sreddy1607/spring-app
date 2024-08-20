@@ -1,0 +1,190 @@
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+        apiVersion: v1
+        kind: Pod
+        spec:
+          serviceAccountName: jenkins
+          volumes:
+            - name: dockersock
+              hostPath:
+                path: /var/run/docker.sock
+            - name: varlibcontainers
+              emptyDir: {}
+            - name: jenkins-trusted-ca-bundle
+              configMap:
+                name: jenkins-trusted-ca-bundle
+                defaultMode: 420
+                optional: true
+          containers:
+            - name: jnlp
+              securityContext:
+                privileged: true
+              envFrom:
+                - configMapRef:
+                    name: jenkins-agent-env
+                    optional: true
+              env:
+                - name: GIT_SSL_CAINFO
+                  value: "/etc/pki/tls/certs/ca-bundle.crt"
+              volumeMounts:
+                - name: jenkins-trusted-ca-bundle
+                  mountPath: /etc/pki/tls/certs
+            - name: cammismaven
+              image: 136299550619.dkr.ecr.us-west-2.amazonaws.com/cammismaven:1.0.0
+              tty: true
+              command: ["/bin/bash"]
+              securityContext:
+                privileged: true
+              workingDir: ${workingDir}
+              envFrom:
+                - configMapRef:
+                    name: jenkins-agent-env
+                    optional: true
+              env:
+                - name: HOME
+                  value: ${workingDir}
+                - name: BRANCH
+                  value: ${branch}
+                - name: NEXUS_ACCESS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: jenkins-token-qqsb2
+                      key: token
+                - name: GIT_SSL_CAINFO
+                  value: "/etc/pki/tls/certs/ca-bundle.crt"
+              volumeMounts:
+                - name: jenkins-trusted-ca-bundle
+                  mountPath: /etc/pki/tls/certs
+            - name: sonarscanner
+              image: sonarsource/sonar-scanner-cli:latest
+              tty: true
+              command: ["/bin/bash"]
+              workingDir: ${workingDir}
+              volumeMounts:
+                - name: jenkins-trusted-ca-bundle
+                  mountPath: /etc/pki/tls/certs
+      """
+    }
+  }
+
+  options {
+    disableConcurrentBuilds()
+    timeout(time: 5, unit: 'HOURS')
+    skipDefaultCheckout()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  environment {
+    NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
+    NEXUS_REPOSITORY = "cammis-java-repo"
+    NEXUS_CREDENTIALS = credentials('nexus-credentials')
+    MAVEN_OPTS = "-Dmaven.wagon.http.ssl.insecure=true -Dmaven.wagon.http.ssl.allowall=true"
+    SONAR_HOST_URL = "https://your-sonarqube-server.com"
+    SONAR_AUTH_TOKEN = credentials('sonarqube-token')
+  }
+
+  parameters {
+    choice(name: 'DEPLOY_ENV', choices: ['dev', 'sandbox', 'sit', 'uat', 'prd', 'prd-dr'], description: 'Select the environment to deploy to')
+  }
+
+  stages {
+    stage("Initialize") {
+      steps {
+        container(name: "cammismaven") {
+          script {
+            properties([parameters([])])
+            env_stage_name = "initialize"
+            env_step_name = "checkout"
+
+            deleteDir()
+            echo 'Checking out source and getting the commit ID'
+            env_current_git_commit = checkout(scm).GIT_COMMIT
+
+            echo 'Loading properties file'
+            env_step_name = "load properties"
+
+            env_step_name = "set global variables"
+            echo 'Initializing Slack channels and tokens'
+          }
+        }
+      }
+    }
+
+    stage('Build and Test') {
+      steps {
+        container('cammismaven') {
+          script {
+            sh '''
+              ls -l
+              mvn clean package
+            '''
+          }
+        }
+      }
+    }
+
+    stage('SonarQube Analysis') {
+      steps {
+        container('sonarscanner') {
+          script {
+            sh '''
+              sonar-scanner \
+                -Dsonar.projectKey=your_project_key \
+                -Dsonar.sources=. \
+                -Dsonar.host.url=${SONAR_HOST_URL} \
+                -Dsonar.login=${SONAR_AUTH_TOKEN}
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        waitForQualityGate abortPipeline: true
+      }
+    }
+
+    stage('Upload Artifact to Nexus') {
+      steps {
+        container('cammismaven') {
+          script {
+
+            sh '''
+              # Find the JAR file
+              JARFILE=$(ls target/ | grep -E '.jar$|.war$|.ear$' | head -1)
+              echo "Found JAR file: $JARFILE"
+
+              # Upload to Nexus
+              curl -kv -u ${NEXUS_CREDENTIALS_USR}:${NEXUS_CREDENTIALS_PSW} \
+                -F "maven2.generate-pom=false" \
+                -F "maven2.asset1=@pom.xml" \
+                -F "maven2.asset1.extension=pom" \
+                -F "maven2.asset2=@target/$JARFILE;type=application/java-archive" \
+                -F "maven2.asset2.extension=war" \
+                ${NEXUS_URL}/service/rest/v1/components?repository=${NEXUS_REPOSITORY}
+            '''
+          }
+        }
+      }
+    }
+
+    stage('Deploy to Environment') {
+      steps {
+        container('cammismaven') {
+          script {
+            def deployEnv = params.DEPLOY_ENV
+            echo "Deploying to environment: ${deployEnv}"
+
+            sh """
+              echo "Deploying to ${deployEnv} environment"
+              # Add your deployment commands here
+            """
+          }
+        }
+      }
+    }
+  }
+}
