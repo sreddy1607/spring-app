@@ -1,0 +1,291 @@
+def currentBranch = env.BRANCH_NAME ?: "tar-ioc-app"
+def environmentNamespace = env.NAMESPACE ?: "dev"
+def workspaceDirectory = "/home/jenkins/agent"
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+                apiVersion: v1
+                kind: Pod
+                spec:
+                  serviceAccountName: jenkins
+                  volumes:
+                    - name: dockersock
+                      hostPath:
+                        path: /var/run/docker.sock
+                    - name: varlibcontainers
+                      emptyDir: {}
+                    - name: jenkins-trusted-ca-bundle
+                      configMap:
+                        name: jenkins-trusted-ca-bundle
+                        defaultMode: 420
+                        optional: true
+                  containers:
+                    - name: jnlp
+                      securityContext:
+                        privileged: true
+                      envFrom:
+                        - configMapRef:
+                            name: jenkins-agent-env
+                            optional: true
+                      env:
+                        - name: GIT_SSL_CAINFO
+                          value: "/etc/pki/tls/certs/ca-bundle.crt"
+                      volumeMounts:
+                        - name: jenkins-trusted-ca-bundle
+                          mountPath: /etc/pki/tls/certs
+                    - name: cammismaven
+                      image: 136299550619.dkr.ecr.us-west-2.amazonaws.com/cammismaven:1.0.0
+                      tty: true
+                      command: ["/bin/bash"]
+                      securityContext:
+                        privileged: true
+                      workingDir: "/home/jenkins/agent"
+                      envFrom:
+                        - configMapRef:
+                            name: jenkins-agent-env
+                            optional: true
+                      env:
+                        - name: HOME
+                          value: "/home/jenkins/agent"
+                        - name: BRANCH
+                          value: "${currentBranch}"
+                        - name: NEXUS_ACCESS_TOKEN
+                          valueFrom:
+                            secretKeyRef:
+                              name: jenkins-token-qqsb2
+                              key: token
+                        - name: GIT_SSL_CAINFO
+                          value: "/etc/pki/tls/certs/ca-bundle.crt"
+                      volumeMounts:
+                        - name: jenkins-trusted-ca-bundle
+                          mountPath: /etc/pki/tls/certs
+            """
+        }
+    }
+
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 5, unit: 'HOURS')
+        skipDefaultCheckout()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    parameters {
+        choice(name: 'BUILD_TYPE', choices: ['SNAPSHOT', 'RELEASE'], description: 'Select build type')
+        choice(name: 'VERSION_INCREMENT', choices: ['PATCH', 'MINOR', 'MAJOR'], description: 'Select version increment type')
+        booleanParam(name: 'DEPLOY_TO_NEXUS', defaultValue: true, description: 'Deploy to Nexus?')
+        string(name: 'ArtifactVersion', description: 'Select the artifact version (Optional, defaults to pom.xml version)', trim: true)
+    }
+    
+
+    
+
+    environment {
+        env_git_branch_type = "feature/devops"
+        env_git_branch_name = "${currentBranch}"
+        env_current_git_commit = ""
+        env_skip_build = "false"
+        env_stage_name = ""
+        env_step_name = ""
+        env_release_type = "${params.RELEASE_TYPE}"
+
+        SONAR_TIMEOUT = "3"
+        SONAR_SLEEP = "10000"
+        SONAR_ERROR_MSG = "QUALITY GATE ERROR: Pipeline set to unstable"
+        SONAR_BUILD_RESULT = "UNSTABLE"
+        SONAR_SLACK_MSG = "Quality Gate Passed"
+
+        NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
+        NEXUS_REPOSITORY = "surge-tar-maven"
+        NEXUS_CREDENTIALS = credentials('nexus-credentials')
+        GROUP_ID = 'ImageOperatorConsole'
+        ARTIFACT_ID = 'ImageOperatorConsole'
+        PACKAGING = 'jar'
+        CREDENTIALS_ID = 'nexus-credentials'
+    }
+
+    stages {
+        stage("Initialize") {
+            steps {
+                container(name: "cammismaven") {
+                    script {
+                        echo 'Checking out source and getting the commit ID'
+                        env_current_git_commit = checkout(scm).GIT_COMMIT
+                    }
+                }
+            }
+        }
+
+        stage('Determine Version') {
+            steps {
+                script {
+                    // Read current version from pom.xml
+                    def pom = readMavenPom file: 'ImageOperatorConsole/pom.xml'
+                    def currentVersion = pom.version
+
+                    // Remove -SNAPSHOT if present
+                    currentVersion = currentVersion.replaceAll('-SNAPSHOT', '')
+
+                    // Split version into major, minor, patch
+                    def (major, minor, patch) = currentVersion.tokenize('.')
+
+                    // Increment version based on parameter
+                    switch(params.VERSION_INCREMENT) {
+                        case 'MAJOR':
+                            major = major.toInteger() + 1
+                            minor = 0
+                            patch = 0
+                            break
+                        case 'MINOR':
+                            minor = minor.toInteger() + 1
+                            patch = 0
+                            break
+                        case 'PATCH':
+                            patch = patch.toInteger() + 1
+                            break
+                    }
+
+                    // Construct new version
+                    def newVersion = "${major}.${minor}.${patch}"
+                    if (params.BUILD_TYPE == 'SNAPSHOT') {
+                        newVersion += '-SNAPSHOT'
+                    }
+
+                    env.NEW_VERSION = newVersion
+                    echo "New version: ${env.NEW_VERSION}"
+                }
+            }
+        }
+
+        
+
+        stage('Maven Build and Test') {
+            steps {
+                container('cammismaven') {
+                    script {
+                        // Extract the version from the pom.xml if ArtifactVersion is not provided
+                        def selectedVersion = params.ArtifactVersion ?: sh(script: 'mvn -f ImageOperatorConsole/pom.xml help:evaluate -Dexpression=project.version -q -DforceStdout', returnStdout: true).trim()
+        
+                        // If version is not found or empty, fail the build
+                        if (!selectedVersion) {
+                            error "Unable to determine version from pom.xml or provided ArtifactVersion."
+                        }
+                        
+                        // Define the release name using the selected version
+                        def releaseName = "${ARTIFACT_ID}-${selectedVersion}"
+        
+                        echo "Using version: ${selectedVersion}"
+                        echo "Release name: ${releaseName}"
+        
+                        // Run Maven commands with the selected version
+                        sh """
+                        cd ImageOperatorConsole
+                        mvn clean install -DartifactId=${releaseName} -Dversion=${selectedVersion} || exit 1
+                        mvn test || exit 1
+                        """
+                    }
+                }
+            }
+        }
+
+
+        
+
+        stage('Sonar Scan') {
+            steps {
+                script {
+                    withSonarQubeEnv('sonar_server') {
+                        container(name: "cammismaven") {
+                            sh """
+                            echo ' wget and unzip file'
+                            mkdir -p /home/jenkins/agent/.sonar/native-sonar-scanner
+                            wget --quiet https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.1.0.4477-linux-x64.zip
+                            unzip -q sonar-scanner-cli-6.1.0.4477-linux-x64.zip -d /home/jenkins/agent/.sonar/native-sonar-scanner
+                            """
+                        }
+                        container(name: "jnlp") {
+                            sh """
+                            /home/jenkins/agent/.sonar/native-sonar-scanner/sonar-scanner-6.1.0.4477-linux-x64/bin/sonar-scanner -Dproject.settings=${WORKSPACE}/devops/sonar/sonar-project.properties
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage("Quality Gate") {
+            steps {
+                container(name: "jnlp") {
+                    script {
+                        sleep time: SONAR_SLEEP, unit: "MILLISECONDS"
+
+                        timeout(time: SONAR_TIMEOUT, unit: 'MINUTES') {
+                            def qualGate = waitForQualityGate()
+                            if (qualGate.status == "OK") {
+                                echo "Pipeline info: Quality Gate Passed"
+                            } else {
+                                echo "Quality Gate Failed"
+                                currentBuild.result = SONAR_BUILD_RESULT
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Nexus') {
+            when {
+                expression { return params.DEPLOY_TO_NEXUS }
+            }
+            steps {
+                container('maven') {
+                    script {
+                        def nexusRepo = params.BUILD_TYPE == 'SNAPSHOT' ? 'maven-snapshots' : 'maven-releases'
+                        
+                        sh """
+                        mvn deploy:deploy-file \
+                          -DgroupId=${GROUP_ID} \
+                          -DartifactId=${ARTIFACT_ID} \
+                          -Dversion=${env.NEW_VERSION} \
+                          -Dpackaging=${PACKAGING} \
+                          -Dfile=target/${ARTIFACT_ID}-${env.NEW_VERSION}.${PACKAGING} \
+                          -DrepositoryId=nexus \
+                          -Durl=${NEXUS_URL}/repository/${nexusRepo}
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Tag Git') {
+            when {
+                expression { return params.BUILD_TYPE == 'RELEASE' }
+            }
+            steps {
+                container(name: "jnlp") {
+                    lock(resource: 'tar-ioc-app', inversePrecedence: false) {
+                        dir("${WORKSPACE}/tar-ioc-app/devops") {
+                            withCredentials([usernamePassword(credentialsId: 'github-key', usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
+                                script {
+                                    // Clone the specific branch of the repository
+                                    sh """
+                                    git clone -b feature/devopsnew https://${NUSER}:${NPASS}@github.com/ca-mmis/tar-ioc-app.git --depth=1
+                                    cd tar-ioc-app
+                                    git config --global user.email "jenkins@cammis.com"
+                                    git config --global user.name "jenkins"
+                                    git checkout feature/devopsnew
+                                    git pull
+                                    git tag -a v${env.NEW_VERSION} -m "Release version ${env.NEW_VERSION}"
+                                    git push https://${NUSER}:${NPASS}@github.com/ca-mmis/tar-ioc-app.git v${env.NEW_VERSION}
+                                    """
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
