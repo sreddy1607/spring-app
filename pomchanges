@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+    environment {
+        NEXUS_VERSION = ""  // Set dynamically based on build or user selection
+        BUILD_REQUIRED = 'false'
+    }
+    parameters {
+        string(name: 'DEPLOY_VERSION', defaultValue: '', description: 'Specify version to deploy if no build is required.')
+    }
+    stages {
+        stage('Check for Modifications') {
+            steps {
+                script {
+                    def modifiedFiles = sh(script: "git diff --name-only HEAD HEAD~1", returnStdout: true).trim()
+                    if (modifiedFiles.contains('pom.xml')) {
+                        env.BUILD_REQUIRED = 'true'
+                        echo "pom.xml has been modified. Build is required."
+                    } else {
+                        env.BUILD_REQUIRED = 'false'
+                        echo "No changes in pom.xml. Skipping build."
+                    }
+                }
+            }
+        }
+
+        stage('Build if Modified') {
+            when {
+                expression { env.BUILD_REQUIRED == 'true' }
+            }
+            steps {
+                echo "Building latest version..."
+                sh 'mvn clean install'  // Run build commands here
+                script {
+                    // Capture latest version and set in NEXUS_VERSION
+                    def version = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout", returnStdout: true).trim()
+                    env.NEXUS_VERSION = version
+                    echo "Built and captured version: ${env.NEXUS_VERSION}"
+
+                    // Code to upload to Nexus here, if needed
+                    // Example: sh "curl -u ${NEXUS_USER}:${NEXUS_PASS} -T target/your-artifact-${env.NEXUS_VERSION}.jar ${NEXUS_URL}/repository/your-repo/"
+                }
+            }
+        }
+
+        stage('Retrieve Existing Version from Nexus') {
+            when {
+                expression { env.BUILD_REQUIRED == 'false' }
+            }
+            steps {
+                script {
+                    // If DEPLOY_VERSION is set, use it; otherwise, set a default existing version
+                    env.NEXUS_VERSION = params.DEPLOY_VERSION ?: 'specific_version'  // Example: '4.0.1'
+                    echo "Retrieving version ${env.NEXUS_VERSION} from Nexus"
+                    // Code to download the specified version from Nexus
+                    // Example: sh "curl -u ${NEXUS_USER}:${NEXUS_PASS} -O ${NEXUS_URL}/repository/your-repo/your-artifact-${env.NEXUS_VERSION}.jar"
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo "Deploying version ${env.NEXUS_VERSION}"
+                // Add deployment code here, e.g., Kubernetes, AWS, etc.
+            }
+        }
+    }
+}
