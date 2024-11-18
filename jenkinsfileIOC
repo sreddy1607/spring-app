@@ -1,0 +1,478 @@
+def currentBranch = env.BRANCH_NAME ?: 'tar-ioc-app'
+def environmentNamespace = env.NAMESPACE ?: 'dev'
+def workspaceDirectory = "/home/jenkins/agent"
+def workingDir = "/home/jenkins/agent"
+
+pipeline {
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  volumes:
+  - name: dockersock
+    hostPath:
+      path: /var/run/docker.sock
+  - name: varlibcontainers
+    emptyDir: {}
+  - name: jenkins-trusted-ca-bundle
+    configMap:
+      name: jenkins-trusted-ca-bundle
+      defaultMode: 420
+      optional: true
+  containers:
+  - name: jnlp
+    securityContext:
+      privileged: true
+    envFrom:
+    - configMapRef:
+        name: jenkins-agent-env
+        optional: true
+    env:
+    - name: GIT_SSL_CAINFO
+      value: "/etc/pki/tls/certs/ca-bundle.crt"
+    volumeMounts:
+    - name: jenkins-trusted-ca-bundle
+      mountPath: /etc/pki/tls/certs
+  - name: aws-boto3
+    image: 136299550619.dkr.ecr.us-west-2.amazonaws.com/cammisboto3:1.0.1
+    tty: true
+    command: ["/bin/bash"]
+    workingDir: "${workspaceDirectory}"
+    envFrom:
+    - configMapRef:
+        name: jenkins-agent-env
+        optional: true
+    env:
+    - name: HOME
+      value: "${workspaceDirectory}"
+    - name: BRANCH
+      value: "${currentBranch}"
+    - name: GIT_SSL_CAINFO
+      value: "/etc/pki/tls/certs/ca-bundle.crt"
+    volumeMounts:
+    - name: jenkins-trusted-ca-bundle
+      mountPath: /etc/pki/tls/certs
+  - name: cammismaven
+    image: 136299550619.dkr.ecr.us-west-2.amazonaws.com/cammismaven:1.0.0
+    tty: true
+    command: ["/bin/bash"]
+    securityContext:
+      privileged: true
+    workingDir: "${workspaceDirectory}"
+    envFrom:
+    - configMapRef:
+        name: jenkins-agent-env
+        optional: true
+    env:
+    - name: HOME
+      value: "/home/jenkins/agent"
+    - name: BRANCH
+      value: "${currentBranch}"
+    - name: NEXUS_ACCESS_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-token-qqsb2
+          key: token
+    - name: GIT_SSL_CAINFO
+      value: "/etc/pki/tls/certs/ca-bundle.crt"
+    volumeMounts:
+    - name: jenkins-trusted-ca-bundle
+      mountPath: /etc/pki/tls/certs
+"""
+        }
+    }
+
+    options {
+        disableConcurrentBuilds()
+        timeout(time: 5, unit: 'HOURS')
+        skipDefaultCheckout()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        env_git_branch_type = "feature/devops"
+        env_git_branch_name = "${currentBranch}"
+        env_deploy_env = "DEV"
+        env_current_git_commit = ""
+        env_accesskey = ""
+        env_secretkey = ""
+        env_tag_name = ""
+        env_skip_build = "false"
+        env_skip_deploy = 'false'
+        env_stage_name = ""
+        env_step_name = ""
+        env_release_type = "${params.RELEASE_TYPE}"
+        env_DEPLOY_FILES = "true"
+        env_DEPLOY_CONFIG = "false"
+        env_DEPLOY_ENVIRONMENT = "false"
+        SONAR_TIMEOUT = "3"
+        SONAR_SLEEP = "10000"
+        SONAR_ERROR_MSG = "QUALITY GATE ERROR: Pipeline set to unstable"
+        SONAR_BUILD_RESULT = "UNSTABLE"
+        SONAR_SLACK_MSG = "Quality Gate Passed"
+        NEXUS_URL = "https://nexusrepo-tools.apps.bld.cammis.medi-cal.ca.gov"
+        NEXUS_REPOSITORY = "surge-tar-maven"
+        NEXUS_CREDENTIALS = credentials('nexus-credentials')
+        GIT_CREDENTIALS = credentials('github-key')
+        GROUP_ID = 'ImageOperatorConsole'
+        ARTIFACT_ID = 'ImageOperatorConsole'
+        PACKAGING = 'jar,war'
+        CREDENTIALS_ID = 'nexus-credentials'
+    }
+
+   stages {
+   stage("Initialize") {
+            steps {
+                container(name: "cammismaven") {
+                    script {
+                        // Define parameters with a default value for GIT_TAG and GIT_SHA
+                        properties([
+                            parameters([
+                                choice(name: 'RELEASE_TYPE', choices: ['PATCH', 'MINOR', 'MAJOR'], description: 'Enter Release type'),
+                                booleanParam(name: 'USE_GIT_TAG', defaultValue: false, description: 'Use the selected git tag instead of the LATEST commit'),
+                                gitParameter(name: 'GIT_TAG', defaultValue: 'tar-ioc-app_from_dev', description: 'git tag', type: 'PT_TAG'),
+                                string(name: 'GIT_SHA', defaultValue: 'enter git sha(8+ chars)', description: 'Enter git SHA to deploy'),
+                                booleanParam(name: 'DEPLOY', defaultValue: false, description: 'Select DEPLOY to deploy to the target server')
+                            ])
+                        ])
+        
+                        // Clean workspace at the start of the stage
+                        deleteDir()
+        
+                        // Set environment variables and display them
+                        env_release_type = params.RELEASE_TYPE
+                        echo "Checking out source and getting the commit ID."
+                        env_current_git_commit = checkout(scm).GIT_COMMIT
+                        env_current_git_commit = env_current_git_commit[0..7]
+                        env_deploy_env = "DEV"
+                        echo "Current deployment environment: ${env_deploy_env}"
+        
+                        // Check if deployment is enabled
+                        if (params.DEPLOY == true) {
+                            env_skip_deploy = "false"
+                            echo "Deploy parameter is set to true."
+                        }
+        
+                        // Generate the tag name
+                        env_tag_name = "${BRANCH_NAME}_${BUILD_NUMBER}_${env_current_git_commit}"
+                        echo "Tag to be applied: ${env_tag_name}"
+        
+                        // Handle Git tags or SHAs
+                        if (params.USE_GIT_TAG == true) {
+                            env_current_git_commit = params.GIT_TAG
+                        }
+                        if (!params.GIT_SHA.contains("enter")) {
+                            env_current_git_commit = params.GIT_SHA
+                        }
+                        echo "Commit/tag to be used: ${env_current_git_commit}"
+        
+                        // Handle Git operations (fetch and checkout)
+                        try {
+                            withCredentials([usernamePassword(credentialsId: "github-key", usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
+                                if (params.GIT_SHA.contains("enter") && !params.USE_GIT_TAG) {
+                                    // Case: No SHA provided and not using a Git tag -> Checkout latest commit and tag it
+                                    sh """
+                                        git config --global --add safe.directory '*'
+                                        git config --system --add safe.directory '*'
+                                        echo "Using latest commit: ${env_current_git_commit}"
+                                        git checkout ${BRANCH_NAME}
+                                        git config --global user.email "jenkins@cammis.com"
+                                        git config --global user.name "jenkins"
+                                        git fetch --quiet --tags https://${NUSER}:${NPASS}@github.com/ca-mmis/tar-ioc-app.git
+                                        git tag -f -a "${env_tag_name}" -m "tag build" ${env_current_git_commit}
+                                        git push -f https://${NUSER}:${NPASS}@github.com/ca-mmis/tar-ioc-app.git ${env_tag_name}
+                                        git checkout ${env_current_git_commit}
+                                        git diff-tree --no-commit-id --name-only ${env_current_git_commit} -r > commit-changes.txt
+                                    """
+                                } else {
+                                    // Case: Checkout the specific SHA or Git tag directly
+                                    sh """
+                                        echo "Checking out SHA or TAG: ${env_current_git_commit}"
+                                        git config --global --add safe.directory '*'
+                                        git config --system --add safe.directory '*'
+                                        git checkout ${env_current_git_commit}
+                                        echo "Rebuilding everything as this is a previous commit."
+                                        echo "IOCApp" > commit-changes.txt
+                                    """
+                                }
+                            }
+                        } catch (Exception e) {
+                            // Handle Git errors and fail the build
+                            echo "Git operations failed: ${e.message}"
+                            currentBuild.result = 'FAILURE'
+                            error "Terminating pipeline due to Git fetch/checkout failure"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build') {
+            steps {
+                container(name: "cammismaven") {
+                    script {
+                        echo "Creating directory to build into and deploy from."
+                        echo "Adding placeholder.txt file for deployment preparation."
+        
+                        // Use the sh block to create directories and files
+                        sh """
+                            mkdir -p devops/codedeploy/tar-ioc-app
+                            touch devops/codedeploy/tar-ioc-app/placeholder.txt
+                        """
+        
+                        // Ensure we're in the correct directory (ImageOperatorConsole)
+                        dir('ImageOperatorConsole') {
+                            // Run Maven build and tests
+                            echo "Building the tar-ioc-app Maven project..."
+                            sh "mvn clean install"
+                            sh "mvn test"
+        
+                            // Copy the necessary build artifacts for deployment
+                            echo "Copying build artifacts for deployment..."
+                            sh """
+                                mkdir -p ../devops/codedeploy/tar-ioc-app/
+                                cp target/*.war ../devops/codedeploy/tar-ioc-app/
+                            """
+                        }
+                    }
+                }
+            }
+}
+
+
+
+
+      stage('Sonar Scan') {
+            steps {
+                script {
+                    withSonarQubeEnv('sonar_server') {
+                        container(name: "cammismaven") {
+                            sh """
+                            echo ' wget and unzip file'
+                            mkdir -p /home/jenkins/agent/.sonar/native-sonar-scanner
+                            wget --quiet https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.1.0.4477-linux-x64.zip
+                            unzip -q sonar-scanner-cli-6.1.0.4477-linux-x64.zip -d /home/jenkins/agent/.sonar/native-sonar-scanner
+                            """
+                        }
+                        container(name: "jnlp") {
+                            sh """
+                            /home/jenkins/agent/.sonar/native-sonar-scanner/sonar-scanner-6.1.0.4477-linux-x64/bin/sonar-scanner -Dproject.settings=${WORKSPACE}/devops/sonar/sonar-project.properties
+                            """
+                        }
+                    }
+                }
+            }
+        }  
+        
+        stage('Quality Gate') {
+            steps {
+                container(name: 'jnlp') {
+                    script {
+                        sh """
+                            echo "######################################################################################\\n"
+                            echo "#### RUNNING SONARQUBE QUALITY GATE CHECK ####\\n"
+                            echo "SONAR TIMEOUT ${SONAR_TIMEOUT}"
+                            cat ${WORKSPACE}/devops/sonar/sonar-project.properties
+                            echo "#################################################################################\\n"
+                        """
+                        sleep time: SONAR_SLEEP, unit: 'MILLISECONDS'
+                        timeout(time: SONAR_TIMEOUT, unit: 'MINUTES') {
+                            def qualGate = waitForQualityGate()
+                            if (qualGate.status == 'OK') {
+                                echo "PIPELINE INFO: ${qualGate.status}\\n"
+                            } else if (qualGate.status == 'NONE') {
+                                SONAR_SLACK_MSG = 'PIPELINE WARNING: NO Quality Gate or projectKey associated with project \\nCheck sonar-project.properties projectKey value is correct'
+                                echo "Quality gate failure: ${qualGate.status} \\n ${SONAR_SLACK_MSG} \\n#####################################################################################################################\\n"
+                                currentBuild.result = SONAR_BUILD_RESULT
+                            } else {
+                                echo "Quality Gate: ${qualGate.status} \\n ${SONAR_SLACK_MSG} \\n#####################################################################################################################\\n"
+                                slackNotification('pipeline', "${APP_NAME}-${env_git_branch_name}: <${BUILD_URL}|build #${BUILD_NUMBER}> ${SONAR_SLACK_MSG}.", '#F6F60F', 'true')
+                                currentBuild.result = SONAR_BUILD_RESULT
+                            }
+                        }
+                    }
+                }
+            }
+}
+    stage('Prepare Deployment') {
+            steps {
+                container(name: "aws-boto3") {
+                    script {
+                        echo "Starting Prepare Deployment stage"
+        
+                        // Debug: Print out environment variables used in the deployment
+                        echo "DEPLOY_FILES: ${env_DEPLOY_FILES}"
+                        echo "Deploy Environment: ${env_deploy_env}"
+
+                        // Ensure the credentials are loaded
+                        withCredentials([string(credentialsId: 'RAIS_APPROLE_SECRET_ID', variable: 'RAIS_APPROLE_SECRET_ID')]) {
+                            echo "App Role Secret ID has been retrieved successfully."
+        
+                            // File existence check and debugging output
+                            sh '''
+                                echo "Checking if necessary files exist..."
+                                if [ ! -f devops/codedeploy/after-install.bat ]; then
+                                    echo "Error: after-install.bat file not found!"
+                                    exit 1
+                                else
+                                    echo "File after-install.bat found."
+                                fi
+                                
+                                if [ ! -f devops/codedeploy/serverconfig/index.html ]; then
+                                    echo "Error: index.html file not found!"
+                                    exit 1
+                                else
+                                    echo "File index.html found."
+                                fi
+                            '''
+
+                            sh """
+                              mkdir -p devops/codedeploy/tar-ioc-app/scripts
+                              cp devops/codedeploy/before-install.bat devops/codedeploy/tar-ioc-app/scripts/
+                            """
+        
+                            // Debug: Check that sed command works for each file
+                            echo "Running sed on after-install.bat"
+                            sh '''#!/bin/bash
+                                sed -i "s,{DEPLOY_FILES},${env_DEPLOY_FILES}," devops/codedeploy/after-install.bat
+                                if [ $? -eq 0 ]; then
+                                    echo "Successfully modified after-install.bat"
+                                else
+                                    echo "Error modifying after-install.bat"
+                                    exit 1
+                                fi
+                            '''
+        
+                            echo "Running sed on index.html"
+                            sh '''#!/bin/bash
+                                sed -i "s,{server-environment},${env_deploy_env}," devops/codedeploy/serverconfig/index.html
+                                if [ $? -eq 0 ]; then
+                                    echo "Successfully modified index.html"
+                                else
+                                    echo "Error modifying index.html"
+                                    exit 1
+                                fi
+                            '''
+        
+                            // Debug: Verifying modifications
+                            echo "Verifying modifications in after-install.bat"
+                            sh '''#!/bin/bash
+                                grep -q "${env_DEPLOY_FILES}" devops/codedeploy/after-install.bat
+                                if [ $? -eq 0 ]; then
+                                    echo "Successfully found ${env_DEPLOY_FILES} in after-install.bat"
+                                else
+                                    echo "Error: ${env_DEPLOY_FILES} not found in after-install.bat"
+                                    exit 1
+                                fi
+                            '''
+        
+                            echo "Verifying modifications in index.html"
+                            sh '''#!/bin/bash
+                                grep -q "${env_deploy_env}" devops/codedeploy/serverconfig/index.html
+                                if [ $? -eq 0 ]; then
+                                    echo "Successfully found ${env_deploy_env} in index.html"
+                                else
+                                    echo "Error: ${env_deploy_env} not found in index.html"
+                                    exit 1
+                                fi
+                            '''
+                }
+              } 
+            } 
+          } 
+        }  
+
+
+  stage('Deploy') {
+    when {
+                expression {
+                    return env.env_skip_deploy == "false"
+                }
+            }
+    steps {
+        container(name: "aws-boto3") {
+            script {
+                echo "Starting deployment using AWS CodeDeploy"
+                try {
+                    // Log AWS credentials usage
+                    echo "Using AWS credentials for deployment"
+
+                    withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'jenkins-ecs', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        echo "AWS credentials obtained successfully"
+
+                        // Define the S3 bucket and the deployment package key
+                        def s3Bucket = 'dhcs-codedeploy-app'
+                        def deploymentPackageKey = 'deployment-package.zip'
+
+                        // Check if the deployment package already exists in S3
+                        echo "Checking if deployment package already exists in S3..."
+                        def s3CheckResponse = sh(script: """
+                            aws s3 ls s3://${s3Bucket}/${deploymentPackageKey} > /dev/null 2>&1
+                        """, returnStatus: true)
+
+                        if (s3CheckResponse == 0) {
+                            echo "Package already exists in S3. Skipping upload."
+                        } else {
+                            // Zipping deployment files with log output
+                            echo "Zipping deployment files..."
+                            sh "zip -r /tmp/deployment-package.zip devops/codedeploy/tar-ioc-app/*"
+                            echo "Zipping completed. Deployment package: /tmp/deployment-package.zip"
+
+                            // Upload to S3
+                            echo "Uploading zip to S3 bucket..."
+                            sh """
+                                aws s3 cp /tmp/deployment-package.zip s3://${s3Bucket}/${deploymentPackageKey}
+                            """
+                            echo "Upload to S3 completed successfully"
+                        }
+
+                        // Register revision with AWS CodeDeploy
+                        echo "Registering revision for application 'tar-ioc-app-DEV'"
+                        def createDeploymentResponse = sh(script: """
+                            aws deploy create-deployment --application-name tar-ioc-app-DEV \
+                            --deployment-group-name tar-ioc-app-DEV-INPLACE-deployment-group \
+                            --s3-location bucket=${s3Bucket},key=${deploymentPackageKey},bundleType=zip \
+                            --region us-west-2
+                        """, returnStdout: true).trim()
+
+                        echo "Deployment revision created: ${createDeploymentResponse}"
+
+                        // Parse the JSON response to get the deploymentId
+                        def jsonResponse = readJSON text: createDeploymentResponse
+                        def deploymentId = jsonResponse.deploymentId
+                        echo "Extracted deploymentId: ${deploymentId}"
+
+                        // Monitor the deployment status
+                        echo "Monitoring deployment..."
+
+                        // Retrieve deployment status with additional error details
+                        def deploymentStatus = sh(script: """
+                            aws deploy get-deployment --deployment-id ${deploymentId} --region us-west-2
+                        """, returnStdout: true).trim()
+
+                        echo "Deployment status: ${deploymentStatus}"
+
+                        // Check if deployment is successful or failed
+                        if (deploymentStatus.contains("Failed")) {
+                            echo "Deployment failed. Detailed status: ${deploymentStatus}"
+                            error "Deployment failed! Check the logs for more details."
+                        } else {
+                            echo "Deployment succeeded!"
+                        }
+                    }
+                } catch (Exception e) {
+                    echo "Deployment failed due to an error: ${e.getMessage()}"
+                    currentBuild.result = 'FAILURE'
+                    throw e
+                }
+            }
+        }
+    }
+}
+
+
+}
+}
