@@ -298,6 +298,11 @@ spec:
             }
 }
     stage('Prepare Deployment') {
+        when {
+        expression {
+          env_skip_deploy=="false"
+        }
+      }
             steps {
                 container(name: "aws-boto3") {
                     script {
@@ -388,91 +393,36 @@ spec:
 
   stage('Deploy') {
     when {
-                expression {
-                    return env.env_skip_deploy == "false"
-                }
-            }
-    steps {
-        container(name: "aws-boto3") {
-            script {
-                echo "Starting deployment using AWS CodeDeploy"
-                try {
-                    // Log AWS credentials usage
-                    echo "Using AWS credentials for deployment"
-
-                    withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'jenkins-ecs', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        echo "AWS credentials obtained successfully"
-
-                        // Define the S3 bucket and the deployment package key
-                        def s3Bucket = 'dhcs-codedeploy-app'
-                        def deploymentPackageKey = 'deployment-package.zip'
-
-                        // Check if the deployment package already exists in S3
-                        echo "Checking if deployment package already exists in S3..."
-                        def s3CheckResponse = sh(script: """
-                            aws s3 ls s3://${s3Bucket}/${deploymentPackageKey} > /dev/null 2>&1
-                        """, returnStatus: true)
-
-                        if (s3CheckResponse == 0) {
-                            echo "Package already exists in S3. Skipping upload."
-                        } else {
-                            // Zipping deployment files with log output
-                            echo "Zipping deployment files..."
-                            sh "zip -r /tmp/deployment-package.zip devops/codedeploy/tar-ioc-app/*"
-                            echo "Zipping completed. Deployment package: /tmp/deployment-package.zip"
-
-                            // Upload to S3
-                            echo "Uploading zip to S3 bucket..."
-                            sh """
-                                aws s3 cp /tmp/deployment-package.zip s3://${s3Bucket}/${deploymentPackageKey}
-                            """
-                            echo "Upload to S3 completed successfully"
-                        }
-
-                        // Register revision with AWS CodeDeploy
-                        echo "Registering revision for application 'tar-ioc-app-DEV'"
-                        def createDeploymentResponse = sh(script: """
-                            aws deploy create-deployment --application-name tar-ioc-app-DEV \
-                            --deployment-group-name tar-ioc-app-DEV-INPLACE-deployment-group \
-                            --s3-location bucket=${s3Bucket},key=${deploymentPackageKey},bundleType=zip \
-                            --region us-west-2
-                        """, returnStdout: true).trim()
-
-                        echo "Deployment revision created: ${createDeploymentResponse}"
-
-                        // Parse the JSON response to get the deploymentId
-                        def jsonResponse = readJSON text: createDeploymentResponse
-                        def deploymentId = jsonResponse.deploymentId
-                        echo "Extracted deploymentId: ${deploymentId}"
-
-                        // Monitor the deployment status
-                        echo "Monitoring deployment..."
-
-                        // Retrieve deployment status with additional error details
-                        def deploymentStatus = sh(script: """
-                            aws deploy get-deployment --deployment-id ${deploymentId} --region us-west-2
-                        """, returnStdout: true).trim()
-
-                        echo "Deployment status: ${deploymentStatus}"
-
-                        // Check if deployment is successful or failed
-                        if (deploymentStatus.contains("Failed")) {
-                            echo "Deployment failed. Detailed status: ${deploymentStatus}"
-                            error "Deployment failed! Check the logs for more details."
-                        } else {
-                            echo "Deployment succeeded!"
-                        }
-                    }
-                } catch (Exception e) {
-                    echo "Deployment failed due to an error: ${e.getMessage()}"
-                    currentBuild.result = 'FAILURE'
-                    throw e
-                }
-            }
+        expression {
+          env_skip_deploy=="false"
+        }
+      }
+   steps{    
+    container(name: "aws-boto3") {
+        script {
+            sh """#!/bin/bash
+            echo "Deploy Using AWS CodeDeploy"
+            """
+        withCredentials([aws(accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: 'jenkins-ecr-ecs', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+            step([$class: 'AWSCodeDeployPublisher',
+                  applicationName: "tar-ioc-app-${env_deploy_env}",
+                  awsAccessKey: "${AWS_ACCESS_KEY_ID}",
+                  awsSecretKey: "${AWS_SECRET_ACCESS_KEY}",
+                  credentials: 'awsAccessKey',
+                  deploymentConfig: "tar-ioc-app-${env_deploy_env}-config",
+                  deploymentGroupAppspec: false,
+                  deploymentGroupName: "tar-ioc-app-${env_deploy_env}-INPLACE-deployment-group",
+                  deploymentMethod: 'deploy',
+                  region: 'us-west-2',
+                  excludes: '', iamRoleArn: '', includes: '**', pollingFreqSec: 15, pollingTimeoutSec: 900, proxyHost: '', proxyPort: 0,
+                  s3bucket: 'dhcs-codedeploy-app',
+                  s3key: "deployment-package-${BUILD_NUMBER}.zip",
+                  subdirectory: 'devops/codedeploy', versionFileName: '', waitForCompletion: true])
+               
         }
     }
 }
-
-
+}
+}
 }
 }
